@@ -36,7 +36,7 @@ impl Monitor {
     }
 
     pub fn uid(&self) -> String {
-        format!("{}-{}", self.parent.unwrap_or(0), self.name.clone())
+        format!("{}-{}", self.parent.unwrap_or(0), self.path_name.unwrap().clone())
     }
 }
 
