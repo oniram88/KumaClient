@@ -310,4 +310,33 @@ impl KumaClient {
             None
         }
     }
+
+    pub fn add_monitor_tag(&self, monitor: Monitor, tag_id: u8) -> anyhow::Result<()> {
+        let response: Arc<Mutex<Option<bool>>> = Arc::new(Mutex::new(None));
+
+        let inner_response = response.clone();
+        let ack_callback = move |message: Payload, _socket: RawClient| {
+            info!("Monitor TAG? {:#?}", message);
+            //let _ = inner_response.lock().unwrap().insert(true);
+        };
+
+        self._client
+            .as_ref()
+            .unwrap()
+            .emit("addMonitorTag", vec![tag_id, monitor.id.unwrap(), 0])
+            .expect("Aggiunta Tag Fallito");
+
+        sleep(Duration::from_millis(100));
+        /*        while response.lock().unwrap().is_none() {
+                    sleep(Duration::from_millis(25));
+                    debug!("Stiamo iterando nell'attesa della callback SET TAG")
+                }
+        */
+        //   if response.lock().unwrap().unwrap() {
+        //     info!("Inserimento Monitor Eseguito");
+        Ok(())
+        //} else {
+        //  Err(anyhow!("Errore nella creazione del monitor"))
+        //}
+    }
 }
