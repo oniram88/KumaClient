@@ -24,6 +24,7 @@ pub struct Monitor {
     #[serde(rename = "accepted_statuscodes")]
     accepted_status_codes: Vec<String>,
     expiry_notification: bool,
+    method: Option<MonitorMethod>,
 }
 
 impl Monitor {
@@ -37,6 +38,7 @@ impl Monitor {
             path_name: None,
             accepted_status_codes: vec!["200-299".to_string()],
             expiry_notification: true,
+            method: Some(MonitorMethod::Head),
         }
     }
 
@@ -67,6 +69,18 @@ pub enum MonitorType {
     Mongodb,
     Radius,
     Redis,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum MonitorMethod {
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
+    Head,
+    Options,
 }
 
 #[cfg(test)]
@@ -187,8 +201,8 @@ impl KumaClient {
             .expect("Monitor Loading Error");
 
         while self.monitor_list.clone().lock().unwrap().len() == 0 {
-            sleep(Duration::from_millis(50));
-            debug!("Attesa load monitors");
+            sleep(Duration::from_millis(100));
+            //debug!("Attesa load monitors");
         }
 
         debug!(
@@ -221,38 +235,46 @@ impl KumaClient {
             info!("Monitor aggiunto? {:#?}", message);
 
             match message {
-                Payload::Binary(_) => {}
+                Payload::Binary(_) => {
+                    *inner_response.lock().unwrap() = Some(0);
+                }
                 Payload::String(data) => {
                     let tmp_result: Vec<ApiResponse> = serde_json::from_str(&data).unwrap();
                     if let Some(response) = tmp_result.first() {
                         if response.ok {
-                            *inner_response.lock().unwrap() = Some(response.monitor_id.unwrap_or(0));
+                            *inner_response.lock().unwrap() =
+                                Some(response.monitor_id.unwrap_or(0))
+                        } else {
+                            *inner_response.lock().unwrap() = Some(0)
                         }
+                    }else{
+                        *inner_response.lock().unwrap() = Some(0)
                     }
-
                 }
             }
         };
-
         self._client
             .as_ref()
             .unwrap()
-            .emit_with_ack("add", json!(monitor), Duration::from_secs(2), ack_callback)
+            .emit_with_ack("add", json!(monitor), Duration::from_secs(4), ack_callback)
             .expect("CREAZIONE FALLITa");
 
-        while response.lock().unwrap().is_none()
+        let mut counter = 0;
+        while response.lock().unwrap().is_none() && counter<20 //max loop check 20*100ms
         {
+            counter = counter + 1;
             sleep(Duration::from_millis(100));
             debug!("Stiamo iterando nell'attesa della callback dell'aggiunta monitor")
         }
 
-        if let Some(id) = response.clone().lock().unwrap().deref(){
-            monitor.id = Some((*id).clone());
-            info!("Inserimento Monitor Eseguito");
-            Ok(monitor)
-        } else {
-            Err(anyhow!("Errore nella creazione del monitor"))
+        if let Some(id) = response.clone().lock().unwrap().deref() {
+            if *id > 0 {
+                monitor.id = Some((*id).clone());
+                info!("Inserimento Monitor Eseguito");
+                return Ok(monitor);
+            }
         }
+        Err(anyhow!("Errore nella creazione del monitor"))
     }
 
     pub fn search_monitor(
