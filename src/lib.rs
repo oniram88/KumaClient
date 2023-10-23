@@ -242,12 +242,11 @@ impl KumaClient {
                     let tmp_result: Vec<ApiResponse> = serde_json::from_str(&data).unwrap();
                     if let Some(response) = tmp_result.first() {
                         if response.ok {
-                            *inner_response.lock().unwrap() =
-                                Some(response.monitor_id.unwrap_or(0))
+                            *inner_response.lock().unwrap() = Some(response.monitor_id.unwrap_or(0))
                         } else {
                             *inner_response.lock().unwrap() = Some(0)
                         }
-                    }else{
+                    } else {
                         *inner_response.lock().unwrap() = Some(0)
                     }
                 }
@@ -260,7 +259,8 @@ impl KumaClient {
             .expect("CREAZIONE FALLITa");
 
         let mut counter = 0;
-        while response.lock().unwrap().is_none() && counter<20 //max loop check 20*100ms
+        while response.lock().unwrap().is_none() && counter < 20
+        //max loop check 20*100ms
         {
             counter = counter + 1;
             sleep(Duration::from_millis(100));

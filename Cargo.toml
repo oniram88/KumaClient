@@ -1,5 +1,5 @@
 [package]
-name = "kumaClient"
+name = "uptime_kuma_client"
 version = "0.1.2"
 edition = "2021"
 description = "WIP client to connect to https://github.com/louislam/uptime-kuma"
