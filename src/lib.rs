@@ -5,6 +5,7 @@ use rust_socketio::{ClientBuilder, Payload, RawClient, TransportType};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 use std::time::Duration;
@@ -12,6 +13,7 @@ use std::time::Duration;
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Monitor {
+    pub id: Option<u8>,
     pub name: String,
     #[serde(rename = "type")]
     typology: MonitorType, //type è una chiave non utilizzabile
@@ -21,22 +23,25 @@ pub struct Monitor {
     path_name: Option<String>,
     #[serde(rename = "accepted_statuscodes")]
     accepted_status_codes: Vec<String>,
+    expiry_notification: bool,
 }
 
 impl Monitor {
     pub fn new(name: String, typology: Option<MonitorType>) -> Self {
         Monitor {
+            id: None,
             name: name.clone(),
             typology: typology.unwrap_or(MonitorType::Http),
             url: None,
             parent: None,
             path_name: None,
             accepted_status_codes: vec!["200-299".to_string()],
+            expiry_notification: true,
         }
     }
 
     pub fn uid(&self) -> String {
-        format!("{}-{}", self.parent.unwrap_or(0), self.path_name.unwrap().clone())
+        format!("{}-{}", self.parent.unwrap_or(0), self.name.clone())
     }
 }
 
@@ -90,6 +95,14 @@ pub struct KumaClient {
     _connected: bool,
     _client: Option<Client>,
     monitor_list: Arc<Mutex<HashMap<String, Monitor>>>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+struct ApiResponse {
+    ok: bool,
+    msg: Option<String>,
+    #[serde(rename = "monitorID")]
+    monitor_id: Option<u8>,
 }
 
 impl KumaClient {
@@ -164,8 +177,9 @@ impl KumaClient {
         self
     }
 
-    pub fn add_monitor(&mut self, monitor: Monitor) -> anyhow::Result<()> {
+    fn reload_monitor_list(&mut self) -> anyhow::Result<()> {
         self.connect();
+        self.monitor_list.clone().lock().unwrap().clear();
         self._client
             .as_ref()
             .unwrap()
@@ -182,6 +196,13 @@ impl KumaClient {
             self.monitor_list.try_lock().unwrap().len()
         );
 
+        Ok(())
+    }
+
+    pub fn add_monitor(&mut self, mut monitor: Monitor) -> anyhow::Result<Monitor> {
+        self.connect();
+        self.reload_monitor_list()
+            .expect("problemi nel caricare la lista");
         // controllo se è già presente il monitor
         if self
             .monitor_list
@@ -193,12 +214,24 @@ impl KumaClient {
         }
 
         // dobbiamo mandare la chiamata di aggiunta monitor e avere la relativa risposta affermativa di aggiunta
-        let response: Arc<Mutex<Option<bool>>> = Arc::new(Mutex::new(None));
+        let response: Arc<Mutex<Option<u8>>> = Arc::new(Mutex::new(None));
 
         let inner_response = response.clone();
         let ack_callback = move |message: Payload, _socket: RawClient| {
             info!("Monitor aggiunto? {:#?}", message);
-            let _ = inner_response.lock().unwrap().insert(true);
+
+            match message {
+                Payload::Binary(_) => {}
+                Payload::String(data) => {
+                    let tmp_result: Vec<ApiResponse> = serde_json::from_str(&data).unwrap();
+                    if let Some(response) = tmp_result.first() {
+                        if response.ok {
+                            *inner_response.lock().unwrap() = Some(response.monitor_id.unwrap_or(0));
+                        }
+                    }
+
+                }
+            }
         };
 
         self._client
@@ -207,16 +240,52 @@ impl KumaClient {
             .emit_with_ack("add", json!(monitor), Duration::from_secs(2), ack_callback)
             .expect("CREAZIONE FALLITa");
 
-        while response.lock().unwrap().is_none() {
-            sleep(Duration::from_millis(25));
+        while response.lock().unwrap().is_none()
+        {
+            sleep(Duration::from_millis(100));
             debug!("Stiamo iterando nell'attesa della callback dell'aggiunta monitor")
         }
 
-        if response.lock().unwrap().unwrap() {
+        if let Some(id) = response.clone().lock().unwrap().deref(){
+            monitor.id = Some((*id).clone());
             info!("Inserimento Monitor Eseguito");
-            Ok(())
+            Ok(monitor)
         } else {
             Err(anyhow!("Errore nella creazione del monitor"))
+        }
+    }
+
+    pub fn search_monitor(
+        &mut self,
+        by_name: Option<String>,
+        by_parent_id: Option<u64>,
+    ) -> HashMap<String, Monitor> {
+        self.reload_monitor_list()
+            .expect("Problemi nel load dei monitors");
+        let mut intermediary = self.monitor_list.lock().unwrap().clone();
+
+        if let Some(name) = by_name {
+            intermediary.retain(|_, monitor| monitor.name == name);
+        }
+
+        if let Some(parent_id) = by_parent_id {
+            intermediary.retain(|_, monitor| monitor.parent.unwrap() == parent_id);
+        }
+
+        intermediary
+    }
+
+    pub fn find_monitor(
+        &mut self,
+        by_name: Option<String>,
+        by_parent_id: Option<u64>,
+    ) -> Option<Monitor> {
+        let searched_monitors = self.search_monitor(by_name, by_parent_id);
+
+        if searched_monitors.len() > 1 {
+            Some(searched_monitors.values().next().unwrap().clone())
+        } else {
+            None
         }
     }
 }
