@@ -139,7 +139,7 @@ impl KumaClient {
         let error_handler = |err, _| error!("Error: {:#?}", err);
 
         let client_monitor_list = self.monitor_list.clone();
-        if let Ok(client) = ClientBuilder::new(format!("{}/", self.entrypoint))
+        let client = ClientBuilder::new(format!("{}/", self.entrypoint))
             //.on_any( callback)
             .on("error", error_handler)
             .transport_type(TransportType::Websocket)
@@ -156,35 +156,25 @@ impl KumaClient {
                 }
             })
             .reconnect_on_disconnect(true)
-            .connect()
-        {
-            let duration = Duration::from_millis(300);
-            sleep(duration);
+            .connect()?;
+        let duration = Duration::from_millis(300);
+        sleep(duration);
 
-            let ack_callback = |message: Payload, _socket: RawClient| {
-                info!("Abbiamo eseguito il login {:#?}", message);
-            };
+        let ack_callback = |message: Payload, _socket: RawClient| {
+            info!("Abbiamo eseguito il login {:#?}", message);
+        };
 
-            if client
-                .emit_with_ack(
-                    "login",
-                    serde_json::to_string(&self.auth).unwrap(),
-                    Duration::from_secs(2),
-                    ack_callback,
-                )
-                .is_ok()
-            {
-                self._client = Some(client);
+        client.emit_with_ack(
+            "login",
+            serde_json::to_string(&self.auth).unwrap(),
+            Duration::from_secs(2),
+            ack_callback,
+        )?;
+        self._client = Some(client);
 
-                self._connected = true;
+        self._connected = true;
 
-                Ok(self)
-            } else {
-                Err(anyhow!("No authentication"))
-            }
-        } else {
-            Err(anyhow!("Connection problems"))
-        }
+        Ok(self)
     }
 
     pub fn disconnect(&mut self) -> &Self {
@@ -256,10 +246,12 @@ impl KumaClient {
                 }
             }
         };
-        self._client
-            .as_ref()
-            .unwrap()
-            .emit_with_ack("add", json!(monitor), Duration::from_secs(4), ack_callback)?;
+        self._client.as_ref().unwrap().emit_with_ack(
+            "add",
+            json!(monitor),
+            Duration::from_secs(4),
+            ack_callback,
+        )?;
 
         let mut counter = 0;
         while response.lock().unwrap().is_none() && counter < 20
@@ -285,7 +277,7 @@ impl KumaClient {
         by_name: Option<String>,
         by_parent_id: Option<u64>,
     ) -> HashMap<String, Monitor> {
-        if self.reload_monitor_list().is_err(){
+        if self.reload_monitor_list().is_err() {
             return HashMap::new();
         }
         let mut intermediary = self.monitor_list.lock().unwrap().clone();
@@ -314,35 +306,35 @@ impl KumaClient {
             None
         }
     }
-/*
-    pub fn add_monitor_tag(&self, monitor: Monitor, tag_id: u8) -> anyhow::Result<()> {
-        let response: Arc<Mutex<Option<bool>>> = Arc::new(Mutex::new(None));
+    /*
+       pub fn add_monitor_tag(&self, monitor: Monitor, tag_id: u8) -> anyhow::Result<()> {
+           let response: Arc<Mutex<Option<bool>>> = Arc::new(Mutex::new(None));
 
-        let inner_response = response.clone();
-        let ack_callback = move |message: Payload, _socket: RawClient| {
-            info!("Monitor TAG? {:#?}", message);
-            //let _ = inner_response.lock().unwrap().insert(true);
-        };
+           let inner_response = response.clone();
+           let ack_callback = move |message: Payload, _socket: RawClient| {
+               info!("Monitor TAG? {:#?}", message);
+               //let _ = inner_response.lock().unwrap().insert(true);
+           };
 
-        self._client
-            .as_ref()
-            .unwrap()
-            .emit("addMonitorTag", vec![tag_id, monitor.id.unwrap(), 0])
-            .expect("Aggiunta Tag Fallito");
+           self._client
+               .as_ref()
+               .unwrap()
+               .emit("addMonitorTag", vec![tag_id, monitor.id.unwrap(), 0])
+               .expect("Aggiunta Tag Fallito");
 
-        sleep(Duration::from_millis(100));
-        /*        while response.lock().unwrap().is_none() {
-                    sleep(Duration::from_millis(25));
-                    debug!("Stiamo iterando nell'attesa della callback SET TAG")
-                }
-        */
-        //   if response.lock().unwrap().unwrap() {
-        //     info!("Inserimento Monitor Eseguito");
-        Ok(())
-        //} else {
-        //  Err(anyhow!("Errore nella creazione del monitor"))
-        //}
-    }
+           sleep(Duration::from_millis(100));
+           /*        while response.lock().unwrap().is_none() {
+                       sleep(Duration::from_millis(25));
+                       debug!("Stiamo iterando nell'attesa della callback SET TAG")
+                   }
+           */
+           //   if response.lock().unwrap().unwrap() {
+           //     info!("Inserimento Monitor Eseguito");
+           Ok(())
+           //} else {
+           //  Err(anyhow!("Errore nella creazione del monitor"))
+           //}
+       }
 
- */
+    */
 }
