@@ -130,16 +130,16 @@ impl KumaClient {
         }
     }
 
-    fn connect(&mut self) -> &Self {
+    fn connect(&mut self) -> anyhow::Result<&Self> {
         // SE siamo già connessi non dobbiamo ripetere la connessione
         if self._connected {
-            return self;
+            return Ok(self);
         }
 
         let error_handler = |err, _| error!("Error: {:#?}", err);
 
         let client_monitor_list = self.monitor_list.clone();
-        let client = ClientBuilder::new(format!("{}/", self.entrypoint))
+        if let Ok(client) = ClientBuilder::new(format!("{}/", self.entrypoint))
             //.on_any( callback)
             .on("error", error_handler)
             .transport_type(TransportType::Websocket)
@@ -157,29 +157,34 @@ impl KumaClient {
             })
             .reconnect_on_disconnect(true)
             .connect()
-            .expect("Connection problems");
+        {
+            let duration = Duration::from_millis(300);
+            sleep(duration);
 
-        let duration = Duration::from_millis(300);
-        sleep(duration);
+            let ack_callback = |message: Payload, _socket: RawClient| {
+                info!("Abbiamo eseguito il login {:#?}", message);
+            };
 
-        let ack_callback = |message: Payload, _socket: RawClient| {
-            info!("Abbiamo eseguito il login {:#?}", message);
-        };
+            if client
+                .emit_with_ack(
+                    "login",
+                    serde_json::to_string(&self.auth).unwrap(),
+                    Duration::from_secs(2),
+                    ack_callback,
+                )
+                .is_ok()
+            {
+                self._client = Some(client);
 
-        client
-            .emit_with_ack(
-                "login",
-                serde_json::to_string(&self.auth).unwrap(),
-                Duration::from_secs(2),
-                ack_callback,
-            )
-            .expect("No authentication");
+                self._connected = true;
 
-        self._client = Some(client);
-
-        self._connected = true;
-
-        self
+                Ok(self)
+            } else {
+                Err(anyhow!("No authentication"))
+            }
+        } else {
+            Err(anyhow!("Connection problems"))
+        }
     }
 
     pub fn disconnect(&mut self) -> &Self {
@@ -192,13 +197,13 @@ impl KumaClient {
     }
 
     fn reload_monitor_list(&mut self) -> anyhow::Result<()> {
-        self.connect();
+        self.connect()?;
+
         self.monitor_list.clone().lock().unwrap().clear();
         self._client
             .as_ref()
             .unwrap()
-            .emit("getMonitorList", json!([]))
-            .expect("Monitor Loading Error");
+            .emit("getMonitorList", json!([]))?;
 
         while self.monitor_list.clone().lock().unwrap().len() == 0 {
             sleep(Duration::from_millis(100));
@@ -214,9 +219,8 @@ impl KumaClient {
     }
 
     pub fn add_monitor(&mut self, mut monitor: Monitor) -> anyhow::Result<Monitor> {
-        self.connect();
-        self.reload_monitor_list()
-            .expect("problemi nel caricare la lista");
+        self.connect()?;
+        self.reload_monitor_list()?;
         // controllo se è già presente il monitor
         if self
             .monitor_list
@@ -255,8 +259,7 @@ impl KumaClient {
         self._client
             .as_ref()
             .unwrap()
-            .emit_with_ack("add", json!(monitor), Duration::from_secs(4), ack_callback)
-            .expect("CREAZIONE FALLITa");
+            .emit_with_ack("add", json!(monitor), Duration::from_secs(4), ack_callback)?;
 
         let mut counter = 0;
         while response.lock().unwrap().is_none() && counter < 20
@@ -282,8 +285,9 @@ impl KumaClient {
         by_name: Option<String>,
         by_parent_id: Option<u64>,
     ) -> HashMap<String, Monitor> {
-        self.reload_monitor_list()
-            .expect("Problemi nel load dei monitors");
+        if self.reload_monitor_list().is_err(){
+            return HashMap::new();
+        }
         let mut intermediary = self.monitor_list.lock().unwrap().clone();
 
         if let Some(name) = by_name {
@@ -310,7 +314,7 @@ impl KumaClient {
             None
         }
     }
-
+/*
     pub fn add_monitor_tag(&self, monitor: Monitor, tag_id: u8) -> anyhow::Result<()> {
         let response: Arc<Mutex<Option<bool>>> = Arc::new(Mutex::new(None));
 
@@ -339,4 +343,6 @@ impl KumaClient {
         //  Err(anyhow!("Errore nella creazione del monitor"))
         //}
     }
+
+ */
 }
