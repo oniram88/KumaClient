@@ -118,7 +118,7 @@ struct ApiResponse {
     ok: bool,
     msg: Option<String>,
     #[serde(rename = "monitorID")]
-    monitor_id: Option<u8>,
+    monitor_id: Option<u32>,
 }
 
 impl KumaClient {
@@ -224,7 +224,7 @@ impl KumaClient {
         }
 
         // dobbiamo mandare la chiamata di aggiunta monitor e avere la relativa risposta affermativa di aggiunta
-        let response: Arc<Mutex<Option<u8>>> = Arc::new(Mutex::new(None));
+        let response: Arc<Mutex<Option<u32>>> = Arc::new(Mutex::new(None));
 
         let inner_response = response.clone();
         let ack_callback = move |message: Payload, _socket: RawClient| {
