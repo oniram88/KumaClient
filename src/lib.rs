@@ -25,7 +25,7 @@ pub struct Monitor {
     accepted_status_codes: Vec<String>,
     expiry_notification: bool,
     method: Option<MonitorMethod>,
-    pub interval: u8,
+    pub interval: u32,
 }
 
 impl Monitor {
