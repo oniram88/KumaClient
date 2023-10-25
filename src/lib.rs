@@ -25,7 +25,7 @@ pub struct Monitor {
     accepted_status_codes: Vec<String>,
     expiry_notification: bool,
     method: Option<MonitorMethod>,
-    interval: u8,
+    pub interval: u8,
 }
 
 impl Monitor {
@@ -40,7 +40,7 @@ impl Monitor {
             accepted_status_codes: vec!["200-299".to_string()],
             expiry_notification: true,
             method: Some(MonitorMethod::Head),
-            interval: 60
+            interval: 90
         }
     }
 
