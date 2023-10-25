@@ -13,7 +13,7 @@ use std::time::Duration;
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Monitor {
-    pub id: Option<u8>,
+    pub id: Option<u32>,
     pub name: String,
     #[serde(rename = "type")]
     typology: MonitorType, //type è una chiave non utilizzabile
