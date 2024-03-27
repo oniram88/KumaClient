@@ -52,19 +52,25 @@ impl Monitor {
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum MonitorType {
+    Group,
     Http,
     Port,
     Ping,
     Keyword,
+    #[serde(rename = "json-query")]
+    JsonQuery,
     #[serde(rename = "grpc-keyword")]
     GrpcKeyword,
     Dns,
     Docker,
+    #[serde(rename = "real-browser")]
+    RealBrowser,
     Push,
     Steam,
     Gamedig,
-    Group,
     Mqtt,
+    #[serde(rename = "kafka-producer")]
+    KafkaProducer,    
     Sqlserver,
     Postgres,
     Mysql,
